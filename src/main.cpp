@@ -1,9 +1,9 @@
 #include <Arduino.h>
 #include <robot.h>
-
 #include <ir_codes.h>
 #include <IRdecoder.h>
 #include <Sharp-IR.h>
+#include <LSM6.h>
 
 
 /**
@@ -17,16 +17,22 @@ IRDecoder decoder(IR_PIN);
 */
 #include <HC-SR04.h>
 HC_SR04 hc_sr04(11, 4); // TODO: Choose your pins (echo,trig)
-HC_SR04 hc_sr04_left(3,2);     //echo, trig
+//HC_SR04 hc_sr04_left(3,2);     //echo, trig
 
-SharpIR sharpIR(18); // TODO: Select a pin!!!
+SharpIR sharpIR(20); 
+
+/*
+    imu!
+*/
+LSM6 imu;
+float pitchAngle = 0;
 
 bool turning = false;
 
 void ISR_HC_SR04(void)
 {
     hc_sr04.ISR_echo();
-    hc_sr04_left.ISR_echo();
+    //hc_sr04_left.ISR_echo();
 }
 
 void setup() 
@@ -39,8 +45,11 @@ void setup()
 
     decoder.init();
 
+    imu.init();
+    imu.setFullScaleGyro(imu.GYRO_FS1000);
+
     hc_sr04.init(ISR_HC_SR04);
-    hc_sr04_left.init(ISR_HC_SR04);
+    //hc_sr04_left.init(ISR_HC_SR04);
 
     sharpIR.init();
 
@@ -56,6 +65,8 @@ void loop()
     if(chassis.loop())
     {
         // do stuff here that is synchronized with the motor controller
+        updatePose();
+        //handleCounterWeight();
     }
 
     /**
@@ -71,7 +82,7 @@ void loop()
      */
     
     float distanceReadingForward = 0;
-    float prevDistanceReadingForward = 0;   
+    float prevDistanceReadingForward = 0;
     float avgDistanceReadingForward = ( distanceReadingForward + prevDistanceReadingForward ) / 2;
 
     bool hasNewReadingForward = hc_sr04.getDistance(avgDistanceReadingForward);
@@ -84,7 +95,7 @@ void loop()
     float distanceReadingLeft = 0; 
     bool hasNewReadingLeft = sharpIR.getDistance(distanceReadingLeft);
     if (hasNewReadingLeft && distanceReadingLeft < 15){
-        Serial.println(distanceReadingLeft);
+        //Serial.println(distanceReadingLeft);
         handleNewDistanceReadingLeft(distanceReadingLeft);
     } 
 
@@ -96,11 +107,13 @@ void loop()
      * We could combine the two, but it's cleaner this way with the checker/handlers.
      * An extra couple ADC reads is hardly a problem.
     */
-    if(checkLineTimer()) handleLineTimer();
+     if(imu.checkForPitchUpdate(pitchAngle)) handlePitchUpdate(pitchAngle);
 
     if(checkTurnTimer()) handleTurnTimer();
 
-    if(checkIntersection()) handleIntersection();
+    //if(checkEscapeTimer() handleEscapeTimer);
 
     if(checkBatteryTimer()) handleBatteryTimer();
+
+    if(checkCounterWeightTimer()) handleCounterWeightTimer();
 }
